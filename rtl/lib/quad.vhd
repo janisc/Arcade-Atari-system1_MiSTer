@@ -25,6 +25,8 @@ entity QUAD is
 		joy        : in  std_logic_vector(15 downto 0);
 		mouse      : in  std_logic_vector(24 downto 0);
 		speed      : in  std_logic_vector( 2 downto 0);
+		joy_en     : in  std_logic := '1'; -- 0 = ignore the joystick in joy/mouse mode
+		mouse_en   : in  std_logic := '1'; -- 0 = ignore the mouse
 
 		-- quadrature outputs
 		XA         : out std_logic := '0'; -- horizontal movement and wheel turns
@@ -112,7 +114,7 @@ begin
 		-- mouse input is not sampled because it provides us with a clock for each event
 		if (mode = '0') then -- if mouse mode
 			mclk_last <= mclk; -- mouse clock seems to run at 62 Hz
-			if (mclk_last /= mclk) then
+			if (mclk_last /= mclk) and (mouse_en = '1') then
 				timer <= (others=>'1');
 				sample <= sample_interval;
 				-- Horizontal mouse movement
@@ -153,7 +155,7 @@ begin
 						x_ctr <= x"01";
 						wheel <= wheel + 1;
 					end if;
-				else -- else mouse/joystick mode
+				elsif (joy_en = '1') then -- else mouse/joystick mode
 					x_dir <= joy_h_xlat(joy_h_xlat'LEFT); -- 1=L 0=R
 					x_ctr <= abs(joy_h_xlat(joy_h_xlat'LEFT downto joy_h_xlat'LEFT - x_ctr'LEFT))/2;
 					y_dir <= joy_v_xlat(joy_v_xlat'LEFT); -- 1=U 0=D
