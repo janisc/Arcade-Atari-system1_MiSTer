@@ -24,7 +24,7 @@ entity QUAD is
 		mode       : in  std_logic; -- 1 = wheel mode, 0 = joy/mouse
 		joy        : in  std_logic_vector(15 downto 0);
 		mouse      : in  std_logic_vector(24 downto 0);
-		speed      : in  std_logic_vector( 1 downto 0);
+		speed      : in  std_logic_vector( 2 downto 0);
 
 		-- quadrature outputs
 		XA         : out std_logic := '0'; -- horizontal movement and wheel turns
@@ -47,13 +47,30 @@ architecture RTL of QUAD is
 	signal x_ctr, y_ctr               : signed( 7 downto 0) := (others => '0');
 	signal joy_h_xlat, joy_v_xlat     : signed( 8 downto 0) := (others => '0');
 	signal mouse_h_xlat, mouse_v_xlat : signed( 9 downto 0) := (others => '0');
+	signal mouse_h_ctr,  mouse_v_ctr  : signed( 7 downto 0) := (others => '0');
+
+	-- number of timer rollovers to output for a translated mouse movement:
+	-- xlat/4 for 1:1 and slower, xlat/2 for 2:1, xlat for 4:1 (limited to the x_ctr/y_ctr range)
+	function mouse_ctr(xlat : signed(9 downto 0); speed : std_logic_vector(2 downto 0)) return signed is
+		variable v : signed(9 downto 0);
+	begin
+		if    (speed = "100") then v := resize(abs(xlat(9 downto 1)), 10);
+		elsif (speed = "101") then v := abs(xlat);
+		else  return abs(xlat(9 downto 2));
+		end if;
+		if (v > 127) then
+			return to_signed(127, 8);
+		end if;
+		return v(7 downto 0);
+	end function;
 begin
 	-- index into timer counter for generating quadrature signals, lower index = more pulses/second
 	idx <=
-		10 when (mode = '0' and speed = "00") else -- 1:1 fastest
-		11 when (mode = '0' and speed = "01") else -- 1:2 fast
-		12 when (mode = '0' and speed = "10") else -- 1:4 medium
-		13 when (mode = '0' and speed = "11") else -- 1:8 slow
+		10 when (mode = '0' and speed = "000") else -- 1:1 fastest
+		11 when (mode = '0' and speed = "001") else -- 1:2 fast
+		12 when (mode = '0' and speed = "010") else -- 1:4 medium
+		13 when (mode = '0' and speed = "011") else -- 1:8 slow
+		10 when (mode = '0'                  ) else -- 2:1 and 4:1 output at the 1:1 rate for more rollovers
 		11; -- when in wheel mode
 
 	-- Translate joy coordinates on the Cartesian plane to remove 45 degree trackball rotation
@@ -64,6 +81,8 @@ begin
 	-- Translate mouse coordinates on the Cartesian plane to remove 45 degree trackball rotation (also invert Y axis to match joystick)
 	mouse_h_xlat <= signed((mouse(4) & mouse(4) & mouse(15 downto  8))) + signed((mouse(5) & mouse(5) & mouse(23 downto 16)));
 	mouse_v_xlat <= signed((mouse(4) & mouse(4) & mouse(15 downto  8))) - signed((mouse(5) & mouse(5) & mouse(23 downto 16)));
+	mouse_h_ctr  <= mouse_ctr(mouse_h_xlat, speed);
+	mouse_v_ctr  <= mouse_ctr(mouse_v_xlat, speed);
 
 	-- generate horizontal quadrature outputs
 	p_QX : process
@@ -98,10 +117,10 @@ begin
 				sample <= sample_interval;
 				-- Horizontal mouse movement
 				x_dir <= mouse_h_xlat(mouse_h_xlat'LEFT); -- 1=L 0=R
-				x_ctr <= abs(mouse_h_xlat(mouse_h_xlat'LEFT downto mouse_h_xlat'LEFT - x_ctr'LEFT));
+				x_ctr <= mouse_h_ctr;
 				-- Vertical mouse movement
 				y_dir <= mouse_v_xlat(mouse_v_xlat'LEFT); -- 1=U 0=D
-				y_ctr <= abs(mouse_v_xlat(mouse_v_xlat'LEFT downto mouse_v_xlat'LEFT - y_ctr'LEFT));
+				y_ctr <= mouse_v_ctr;
 			end if;
 		end if;
 
